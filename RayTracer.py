@@ -1,58 +1,74 @@
 import numpy as np
 import helpers
-import  math
+import math
 import sys
+from PIL import Image
 
+
+lights = []
 camera = []
 setting = []
 material = []
 plane = []
 spheres = []
 box = []
-lights = []
 
-
-def compute_camera(position, look_at, up_vector, screen_dist, screen_width, img_height = 500, img_width = 500):
+def compute_camera(objects, position, look_at, up_vector, screen_dist, screen_width, img_height, img_width):
     screen_height = img_height * screen_width / img_width
     towards = np.array(look_at - position)
-    p_center = position + (screen_dist * towards)
     towards_vector = towards / np.linalg.norm(towards)
+    p_center = position + (screen_dist * towards_vector)
+
     screen = (-(img_width/2), img_width/2, -(img_height/2), img_height/2) #left,right,bottom,top
     #screen = ((p_center-screen_height/2-screen_width/2), (p_center+screen_height/2+screen_width/2))# left bottom, top right
-    #the img to return
+    #the img to return-
     image = np.zeros((img_height, img_width, 3))
     mat = build_matrix(towards_vector[0],towards_vector[1],towards_vector[2])
     up_vector, right_vector  = caluclaute_vactors(mat)
+    #print("mat ", mat)
+    print("right_vector ", right_vector )
+    print("up_vector ", up_vector )
+
     for i, y in enumerate(np.linspace(screen[3], screen[2], img_height)):
         for j, x in enumerate(np.linspace(screen[0], screen[1], img_width)):
-            pixel = p_center+i*screen_width/img_width*right_vector+j*img_height
-            color = np.zeros(3)
+            pixel = p_center+x*screen_width/img_width*right_vector+y*screen_height/img_height*up_vector
+            color = np.array(3)
 
-            # Here each pixel color is computed
-            ray = ray_through_pixel(position, pixel)
-            color = pixel_color()
+            ray = ray_through_pixel(position, pixel) # Shoot a ray through each pixel in the image.
+            color = pixel_color(objects, color, ray, setting[0][0:3]) # Here each pixel color is computed
 
-            # We clip the values between 0 and 1 so all pixel values will make sense.
-            image[i, j] = np.clip(color, 0, 1)
+            image[i, j] = color
 
     return image
 
 
 def ray_through_pixel(source, pixel):
     direction = pixel - source
-   # direction = direction / np.linalg.norm(direction) # norm
-    curr_ray = helpers.ray(source, direction)
-    return curr_ray
+    direction = direction / np.linalg.norm(direction) # normlaized
+    ray = helpers.ray(source, direction)
+    return ray
 
-def pixel_color():
-    return
+def pixel_color(objects, color, ray, background_color):
+    closest_obj, min_dist = ray.nearest_intersection(objects)
+
+    if closest_obj is None: # No intersection for this ray
+        return np.array((None, None, None))
+
+    intersection_point = ray.source + ((min_dist - 1e-5) * np.linalg.norm(ray.direction))
+
+    # compute color - 1. light 2. material 3. local geomtry
+
+    output_color = (background_color * closest_obj.tranprancy) + (closest_obj.diffuse + closest_obj.specular) * (1 - closest_obj.tranprancy) + closest_obj.reflection
+
+    #print(output_color)
+    return output_color # 3 - dim np array
 
 def build_matrix(a,b,c):
     Sx = -b
-    Cx=math.sqrt(1-math.sqrt(Sx))
+    Cx=math.sqrt(1-(Sx*Sx))
     Sy= -a/Cx
     Cy=c/Cx
-    mat = np.array[[Cy, 0, Sy][-Sx*Sy, Cx, Sx*Cy][-Cx*Sy, -Sx, Cx*Cy]]
+    mat = np.array([[Cy, 0, Sy],[-Sx*Sy, Cx, Sx*Cy],[-Cx*Sy, -Sx, Cx*Cy]])
     return mat
 
 def caluclaute_vactors(matrix):
@@ -61,7 +77,6 @@ def caluclaute_vactors(matrix):
     right_vector = np.array([1,0,0])
     right_vector = right_vector.dot(matrix)
     return up_vector, right_vector
-
 
 
 def get_args():
@@ -79,10 +94,18 @@ def get_args():
 
     return scene_file, output_image_file, img_w, img_h
 
+def get_lights(): #all lights in scene
+
+    all_lights =[]
+    for light in lights:
+        our_lights = helpers.light(light[0:3],light[3:6],light[6],light[7],light[8])
+        all_lights.append(our_lights)
+    return all_lights
+
 def objects(): #all objects in scene
     all_objects = []
     for spher in spheres:
-        our_sphere = helpers.sphere(spher[0:3], spher[3] )
+        our_sphere = helpers.sphere(spher[0:3], spher[3])
         mat = material[int(spher[4]) - 1]
         our_sphere.material(mat[0:3], mat[3:6], mat[6:9], mat[9], mat[10])
         all_objects.append(our_sphere)
@@ -99,11 +122,10 @@ def objects(): #all objects in scene
         our_box.material(mat[0:3], mat[3:6], mat[6:9], mat[9], mat[10])
         all_objects.append(our_box)
 
-    print(all_objects)
     return all_objects
 
+
 if __name__ == '__main__':
-    objects()
 
     scene_file, output_image_file, img_w, img_h = get_args()
     scene_file = open(scene_file, "r")
@@ -141,14 +163,10 @@ if __name__ == '__main__':
     spheres = np.array(spheres, dtype=float).reshape((int(len(spheres)/5), 5))
     box = np.array(box, dtype=float).reshape((int(len(box)/5), 5))
     lights = np.array(lights, dtype=float).reshape((int(len(lights)/9), 9))
-    objects()
 
-def find_intersection(ray, objects):
-    nearest_object, min_distance = ray.nearest_intersection(ray, objects)
-
-    if nearest_object is None:
-        return None, None, None
-
-    intersection_point = ray.origin + ((min_distance-1e-5) * np.linalg.norm(ray.direction))
-
-    return intersection_point, nearest_object, min_distance
+    all_objects = objects() # all objects in the scene, by classes defined in helpers
+    all_lights = get_lights()
+    camera = camera[0]
+    image = compute_camera(all_objects, camera[0:3], camera[3:6], camera[6:9], camera[9], camera[10], int(img_h), int(img_w))
+    im = Image.fromarray(image.astype('uint8'), 'RGB')
+    im.save("your_file.jpeg")

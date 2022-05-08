@@ -6,18 +6,26 @@ class ray:
         self.direction = direction
 
     def nearest_intersection(self, objects):
-        nearest_object = None
-        min_dist = np.inf
+        nearest_obj = None
+        min_dist = np.inf #infinity
 
         for obj in objects:
-          current_distance, current_object = obj.intersect(self)
-          if current_distance != None:
-              if current_distance < min_distance:
-                  min_distance = current_distance
-                  nearest_object = current_object
+          curr_obj, curr_dist = obj.intersect(self)
+          if curr_dist != None:
+              if curr_dist < min_dist:
+                  min_dist = curr_dist
+                  nearest_obj = curr_obj
 
-        return nearest_object, min_distance
+        return nearest_obj, min_dist
 
+class light:
+
+    def __init__(self, position, light_color,specular_intensity,shadow_intesity,light_radius):
+        self.position = np.array(position)
+        self.light_color = np.array(light_color)
+        self.specular_intensity = np.array(specular_intensity)
+        self.shadow_intensity = np.array(shadow_intesity)
+        self.light_radius = np.array(light_radius)
 
 class object:
 
@@ -35,10 +43,10 @@ class plane(object):
         self.point = np.array(point)
 
     def intersect(self, ray):
-        v = self.point - ray.origin
+        v = self.point - ray.source
         t = (np.dot(v, self.normal) / np.dot(self.normal, ray.direction))
         if t > 0:
-            return t, self
+            return self, t
         else:
             return None, None
 
@@ -54,14 +62,14 @@ class sphere(object):
     def intersect(self, ray):
 
         a = np.dot(ray.direction, ray.direction)
-        b = 2 * np.dot(ray.direction, (ray.origin - self.center))
-        c = np.dot((ray.origin - self.center), (ray.origin - self.center)) - self.radius ** 2
+        b = 2 * np.dot(ray.direction, (ray.source - self.center))
+        c = np.dot((ray.source - self.center), (ray.source - self.center)) - self.radius ** 2
         delta = b ** 2 - 4 * a * c
         if delta > 0:
             t1 = (-b + np.sqrt(delta)) / (2 * a)
             t2 = (-b - np.sqrt(delta)) / (2 * a)
             if t1 > 0 and t2 > 0:
-                return min(t1, t2), self
+                return self, min(t1, t2)
 
         return None, None
 
@@ -76,15 +84,7 @@ class box(object):
 
     def intersect(self, ray):
 
-        a = np.dot(ray.direction, ray.direction)
-        b = 2 * np.dot(ray.direction, (ray.origin - self.center))
-        c = np.dot((ray.origin - self.center), (ray.origin - self.center)) - self.radius ** 2
-        delta = b ** 2 - 4 * a * c
-        if delta > 0:
-            t1 = (-b + np.sqrt(delta)) / (2 * a)
-            t2 = (-b - np.sqrt(delta)) / (2 * a)
-            if t1 > 0 and t2 > 0:
-                return min(t1, t2), self
+        #TODO
 
         return None, None
 
