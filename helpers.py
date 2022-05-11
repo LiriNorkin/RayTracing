@@ -1,4 +1,6 @@
 import numpy as np
+def normalize(vector):
+    return vector / np.linalg.norm(vector)
 
 class ray:
     def __init__(self, source, direction):
@@ -15,6 +17,7 @@ class ray:
               if curr_dist < min_dist:
                   min_dist = curr_dist
                   nearest_obj = curr_obj
+        #print("min",min_dist)
 
         return nearest_obj, min_dist
 
@@ -22,10 +25,10 @@ class light:
 
     def __init__(self, position, light_color,specular_intensity,shadow_intesity,light_radius):
         self.position = np.array(position)
-        self.light_color = np.array(light_color)
-        self.specular_intensity = np.array(specular_intensity)
-        self.shadow_intensity = np.array(shadow_intesity)
-        self.light_radius = np.array(light_radius)
+        self.color = np.array(light_color)
+        self.specular_intensity = specular_intensity
+        self.shadow_intensity = shadow_intesity
+        self.light_radius = light_radius
 
 class object:
 
@@ -53,10 +56,15 @@ class plane(object):
     def normalized(self, intersection_point):
         return np.linalg.norm(self.normal)
 
+    def get_normal(self, intersection_point):
+        return self.normal
+
 class sphere(object):
     def __init__(self, center, radius: float):
         self.center = np.array(center)
         self.radius = radius
+    def get_normal(self, intersection_point):
+        return normalize(intersection_point - self.center)
 
 
     def intersect(self, ray):
@@ -77,7 +85,7 @@ class sphere(object):
         return np.linalg.norm(intersection_point - self.center)
 
 
-class box(object):
+class box(object): #cube
     def __init__(self, center, edge_len: float):
         self.center = np.array(center)
         self.edge_len = edge_len

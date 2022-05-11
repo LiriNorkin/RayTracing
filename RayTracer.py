@@ -5,6 +5,7 @@ import sys
 from PIL import Image
 
 
+
 lights = []
 camera = []
 setting = []
@@ -13,11 +14,12 @@ plane = []
 spheres = []
 box = []
 
-def compute_camera(objects, position, look_at, up_vector, screen_dist, screen_width, img_height, img_width):
+def compute_camera(objects, position, look_at, up_vector, screen_dist, screen_width, img_height, img_width, all_lights):
     screen_height = img_height * screen_width / img_width
     towards = np.array(look_at - position)
     towards_vector = towards / np.linalg.norm(towards)
     p_center = position + (screen_dist * towards_vector)
+    background_color = setting[0][0:3]
 
     screen = (-(img_width/2), img_width/2, -(img_height/2), img_height/2) #left,right,bottom,top
     #screen = ((p_center-screen_height/2-screen_width/2), (p_center+screen_height/2+screen_width/2))# left bottom, top right
@@ -26,25 +28,37 @@ def compute_camera(objects, position, look_at, up_vector, screen_dist, screen_wi
     mat = build_matrix(towards_vector[0],towards_vector[1],towards_vector[2])
     up_vector, right_vector  = caluclaute_vactors(mat)
     #print("mat ", mat)
-    print("right_vector ", right_vector )
-    print("up_vector ", up_vector )
+    #print("right_vector ", right_vector )
+    #print("up_vector ", up_vector )
+    #print("pcenter", p_center)
 
     for i, y in enumerate(np.linspace(screen[3], screen[2], img_height)):
         for j, x in enumerate(np.linspace(screen[0], screen[1], img_width)):
             pixel = p_center+x*screen_width/img_width*right_vector+y*screen_height/img_height*up_vector
             color = np.array(3)
-
             ray = ray_through_pixel(position, pixel) # Shoot a ray through each pixel in the image.
-            color = pixel_color(objects, color, ray, setting[0][0:3]) # Here each pixel color is computed
-
-            image[i, j] = color
-
+            intersection_point, closest_obj = pixel_color(objects, color, ray, background_color) # Here each pixel color is computed
+            light = get_light(ray, all_lights, intersection_point, closest_obj, position)
+            #print("light",light)
+            final_color = (np.clip(light, 0, 1) * np.array([255, 255, 255]))
+            #print("final",final_color)
+            output_color = (background_color * closest_obj.tranprancy) + (
+                        final_color) * (
+                                       1 - closest_obj.tranprancy) + closest_obj.reflection
+            image[i, j] = output_color
     return image
+
+    '''
+            if(i==499):
+                print("i",i,"j",j,"out", output_color,"\n","Pixel",pixel,"V",ray.direction,
+                      "intersection_point",intersection_point)
+    '''
+
 
 
 def ray_through_pixel(source, pixel):
     direction = pixel - source
-    direction = direction / np.linalg.norm(direction) # normlaized
+    direction = helpers.normalize(direction)
     ray = helpers.ray(source, direction)
     return ray
 
@@ -54,14 +68,52 @@ def pixel_color(objects, color, ray, background_color):
     if closest_obj is None: # No intersection for this ray
         return np.array((None, None, None))
 
-    intersection_point = ray.source + ((min_dist - 1e-5) * np.linalg.norm(ray.direction))
+    intersection_point = ray.source + ((min_dist - 1e-5) * helpers.normalize(ray.direction))
 
     # compute color - 1. light 2. material 3. local geomtry
 
-    output_color = (background_color * closest_obj.tranprancy) + (closest_obj.diffuse + closest_obj.specular) * (1 - closest_obj.tranprancy) + closest_obj.reflection
+    #output_color = (background_color * closest_obj.tranprancy) + (closest_obj.diffuse + closest_obj.specular) * (1 - closest_obj.tranprancy) + closest_obj.reflection
 
     #print(output_color)
-    return output_color # 3 - dim np array
+    return intersection_point, closest_obj # 3 - dim np array\
+
+def reflected(vector, normal):
+    v = np.array([0, 0, 0])
+    normal = helpers.normalize(normal)
+    vector = helpers.normalize(vector)
+    v = vector - (2 * (np.dot(vector, normal)) * normal)
+
+    return v
+
+def get_light(ray, all_lights, intersection_point, closest_obj, camera):
+    sum_light = 0
+    N = closest_obj.get_normal(intersection_point)  # normal to surface
+    for light in all_lights:
+        #diffuse
+        K_D = np.array(closest_obj.diffuse)
+        L=(light.position - intersection_point)
+        L = helpers.normalize(L)
+        #print("lightposition",light.position)
+        #print("inter",intersection_point)
+        I_L = (1-light.shadow_intensity) + light.shadow_intensity*(1) # fixed for %
+        I_D = light.color *K_D * I_L * (np.dot(N, L))
+        #print("L",L)
+        #print("dot", np.dot(N, L))
+        #spectular
+        K_S = np.array(closest_obj.specular)
+        V = helpers.normalize(camera-intersection_point)
+        #print("V",V)
+        n = closest_obj.shininess
+        #print("n",n)
+        R = reflected(((-1) * L), N)  # reflection of the hit from light to intesection point on the surace
+        R = helpers.normalize(R)
+        I_S = (K_S * I_L * (np.dot(V, R) ** closest_obj.shininess))
+        #print("IS", I_S)
+        sum_light += (I_D + I_S) * light.color
+
+    #print("Sum=",sum_light)
+    return sum_light
+
 
 def build_matrix(a,b,c):
     Sx = -b
@@ -135,6 +187,8 @@ if __name__ == '__main__':
             continue
         else:
             line = line.strip().split("\t")
+            #line = [x.split() for x in line.split("\t") if x != ""]
+            #print(line)
             title = line[0]
 
             for word in line:
@@ -167,6 +221,6 @@ if __name__ == '__main__':
     all_objects = objects() # all objects in the scene, by classes defined in helpers
     all_lights = get_lights()
     camera = camera[0]
-    image = compute_camera(all_objects, camera[0:3], camera[3:6], camera[6:9], camera[9], camera[10], int(img_h), int(img_w))
+    image = compute_camera(all_objects, camera[0:3], camera[3:6], camera[6:9], camera[9], camera[10], int(img_h), int(img_w), all_lights)
     im = Image.fromarray(image.astype('uint8'), 'RGB')
     im.save("your_file.jpeg")
